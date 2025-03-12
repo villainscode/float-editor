@@ -1,0 +1,47 @@
+.heading-layer {
+    position: absolute;
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    padding: 4px;
+    z-index: 10000;
+    display: none;
+}
+.heading-layer div {
+    padding: 4px 8px;
+    cursor: pointer;
+}
+.heading-layer div:hover {
+    background-color: #f7fafc;
+}
+
+.editor-code {
+    font-family: monospace;
+    background-color: #dde5ea; /* 원하는 배경색 */
+    color: #ff0000 !important;  /* 원하는 글자색 */
+    padding: 2px 2px;
+    border-radius: 3px;
+}
+
+[contenteditable] h1 {
+    font-size: 2em;
+    font-weight: bold;
+    margin-top: 0.67em;
+    margin-bottom: 0.67em;
+}
+[contenteditable] h2 {
+    font-size: 1.5em;
+    font-weight: bold;
+    margin-top: 0.83em;
+    margin-bottom: 0.83em;
+}
+[contenteditable] h3 {
+    font-size: 1.17em;
+    font-weight: bold;
+    margin-top: 1em;
+    margin-bottom: 1em;
+}
+[contenteditable] p {
+    font-size: 1em;
+}
+
