@@ -141,9 +141,9 @@ const FloatingEditor = (function() {
             text: textarea.value.substring(start, end)
         };
         
-        // 툴바 위치 계산 및 표시
-        const coords = getTextareaCoordinates(textarea, start, end);
-        showToolbar(coords);
+        // 선택 영역의 위치 계산 및 툴바 표시
+        const position = getSelectionPosition(textarea);
+        showToolbar(position);
         
         // 디버그 정보 업데이트
         updateDebugInfo();
@@ -204,9 +204,9 @@ const FloatingEditor = (function() {
             end: endIndex
         };
         
-        // 툴바 위치 계산 및 표시
-        const coords = getSelectionCoordinates(range);
-        showToolbar(coords);
+        // 선택 영역의 위치 계산 및 툴바 표시
+        const position = getSelectionPosition(element);
+        showToolbar(position);
         
         // 디버그 정보 업데이트
         updateDebugInfo();
@@ -269,115 +269,106 @@ const FloatingEditor = (function() {
     }
     
     /**
-     * textarea 내 선택 영역의 좌표 계산
-     * @param {Element} textarea - textarea 요소
-     * @param {number} start - 선택 시작 인덱스
-     * @param {number} end - 선택 종료 인덱스
-     * @returns {Object} 좌표 정보
+     * 선택 영역의 위치 계산
+     * @param {Element} element - 선택이 발생한 요소
+     * @returns {Object} 위치 정보 (top, left)
      */
-    function getTextareaCoordinates(textarea, start, end) {
-        // textarea의 위치 정보
-        const rect = textarea.getBoundingClientRect();
-        
-        // 임시 요소를 사용하여 텍스트 위치 계산
-        const div = document.createElement('div');
-        div.style.position = 'absolute';
-        div.style.visibility = 'hidden';
-        div.style.whiteSpace = 'pre-wrap';
-        div.style.wordWrap = 'break-word';
-        div.style.overflow = 'hidden';
-        div.style.width = getComputedStyle(textarea).width;
-        div.style.height = 'auto';
-        div.style.fontSize = getComputedStyle(textarea).fontSize;
-        div.style.fontFamily = getComputedStyle(textarea).fontFamily;
-        div.style.lineHeight = getComputedStyle(textarea).lineHeight;
-        div.style.padding = getComputedStyle(textarea).padding;
-        
-        // 선택 영역 앞의 텍스트
-        const textBeforeSelection = textarea.value.substring(0, start);
-        // 선택된 텍스트
-        const selectedText = textarea.value.substring(start, end);
-        
-        // 텍스트 추가
-        div.textContent = textBeforeSelection;
-        document.body.appendChild(div);
-        
-        // 선택 영역 시작 위치 계산
-        const startHeight = div.clientHeight;
-        const lineHeight = parseInt(getComputedStyle(textarea).lineHeight) || 20; // 기본값 설정
-        
-        // 스크롤 위치 고려
-        const scrollTop = textarea.scrollTop;
-        
-        // 선택 영역의 실제 위치 계산 (스크롤 위치 고려)
-        // 첫 줄 선택 시 적절한 위치 계산을 위해 최소값 설정
-        const minTopPosition = rect.top + parseInt(getComputedStyle(textarea).paddingTop);
-        // 기본 위치 계산 (30px 오프셋 적용)
-        let selectionTop = rect.top + startHeight - scrollTop - 30;
-        
-        // 첫 줄 선택 시 너무 위로 올라가지 않도록 조정
-        if (startHeight < lineHeight || start === 0) {
-            selectionTop = minTopPosition;
+    function getSelectionPosition(element) {
+        // 요소가 textarea인 경우와 contenteditable 요소인 경우 구분
+        if (element.tagName.toLowerCase() === 'textarea') {
+            // textarea의 위치 정보
+            const rect = element.getBoundingClientRect();
+            
+            // 선택 영역 정보
+            const start = element.selectionStart;
+            const end = element.selectionEnd;
+            
+            // 선택 영역의 위치 계산을 위해 임시 요소 생성
+            const div = document.createElement('div');
+            div.style.position = 'absolute';
+            div.style.visibility = 'hidden';
+            div.style.whiteSpace = 'pre-wrap';
+            div.style.wordWrap = 'break-word';
+            div.style.width = getComputedStyle(element).width;
+            div.style.fontSize = getComputedStyle(element).fontSize;
+            div.style.fontFamily = getComputedStyle(element).fontFamily;
+            div.style.lineHeight = getComputedStyle(element).lineHeight;
+            div.style.padding = getComputedStyle(element).padding;
+            
+            // 선택 영역 앞의 텍스트
+            const textBeforeSelection = element.value.substring(0, start);
+            div.textContent = textBeforeSelection;
+            document.body.appendChild(div);
+            
+            // 선택 영역의 위치 계산
+            const lineHeight = parseInt(getComputedStyle(element).lineHeight) || 20;
+            
+            // 스크롤 위치를 고려한 위치 계산
+            // 선택 영역 위에 툴바 배치 (5px 위로 이동)
+            const top = rect.top + div.clientHeight - element.scrollTop + window.scrollY - 5;
+            
+            // 선택 영역의 가로 중앙에 툴바 배치
+            const selectedText = element.value.substring(start, end);
+            const isMultiLine = selectedText.includes('\n');
+            
+            // 가로 위치 계산 (선택 영역의 시작 부분 또는 중앙)
+            let left;
+            if (isMultiLine) {
+                // 여러 줄 선택 시 왼쪽 정렬
+                left = rect.left + parseInt(getComputedStyle(element).paddingLeft) + window.scrollX;
+            } else {
+                // 한 줄 선택 시 선택 영역의 중앙에 배치
+                const textWidth = getTextWidth(textBeforeSelection, element);
+                const selectionWidth = getTextWidth(selectedText, element);
+                left = rect.left + textWidth + (selectionWidth / 2) + window.scrollX;
+            }
+            
+            // 임시 요소 제거
+            document.body.removeChild(div);
+            
+            return { top, left };
         } else {
-            // 첫 줄이 아닌 경우 추가로 5px 더 떨어지도록 조정
-            selectionTop -= 5;
+            // contenteditable 요소의 경우 window.getSelection() 사용
+            const selection = window.getSelection();
+            if (!selection || selection.rangeCount === 0) {
+                return { top: 0, left: 0 };
+            }
+            
+            // 선택 영역의 Range 가져오기
+            const range = selection.getRangeAt(0);
+            
+            // Range의 경계 정보 가져오기
+            const rect = range.getBoundingClientRect();
+            
+            // 스크롤 위치를 고려한 위치 계산
+            // 선택 영역 위에 툴바 배치 (5px 위로 이동)
+            return {
+                top: rect.top + window.scrollY - 5,
+                left: rect.left + (rect.width / 2) + window.scrollX // 선택 영역의 가로 중앙
+            };
         }
-        
-        // 임시 요소 제거
-        document.body.removeChild(div);
-        
-        // 선택 영역의 가로 위치 계산을 위한 추가 작업
-        // 선택 영역 앞의 텍스트를 기준으로 가로 위치 계산
-        const horizontalDiv = document.createElement('div');
-        horizontalDiv.style.position = 'absolute';
-        horizontalDiv.style.visibility = 'hidden';
-        horizontalDiv.style.whiteSpace = 'pre';
-        horizontalDiv.style.fontSize = getComputedStyle(textarea).fontSize;
-        horizontalDiv.style.fontFamily = getComputedStyle(textarea).fontFamily;
-        horizontalDiv.style.padding = '0';
-        
-        // 현재 줄의 시작 부분을 찾기
-        let lineStart = start;
-        while (lineStart > 0 && textarea.value[lineStart - 1] !== '\n') {
-            lineStart--;
-        }
-        
-        // 현재 줄의 텍스트
-        const currentLineText = textarea.value.substring(lineStart, start);
-        horizontalDiv.textContent = currentLineText;
-        document.body.appendChild(horizontalDiv);
-        
-        // 선택 영역 시작 위치의 가로 좌표 계산
-        const selectionLeft = rect.left + horizontalDiv.clientWidth + parseInt(getComputedStyle(textarea).paddingLeft);
-        
-        // 임시 요소 제거
-        document.body.removeChild(horizontalDiv);
-        
-        // 좌표 계산 (선택 영역 바로 위에 위치하도록 수정)
-        return {
-            left: selectionLeft, // 선택 영역 시작 위치
-            top: selectionTop, // 선택 영역 시작 위치 (30px 위로 이동)
-            bottom: selectionTop + lineHeight, // 선택 영역 끝 위치 (한 줄 높이 추가)
-            height: lineHeight
-        };
     }
     
     /**
-     * 일반 선택 영역의 좌표 계산
-     * @param {Range} range - 선택 범위
-     * @returns {Object} 좌표 정보
+     * 텍스트의 너비 계산
+     * @param {string} text - 너비를 계산할 텍스트
+     * @param {Element} element - 스타일 참조용 요소
+     * @returns {number} 텍스트 너비
      */
-    function getSelectionCoordinates(range) {
-        // 선택 영역의 경계 정보 가져오기
-        const rect = range.getBoundingClientRect();
+    function getTextWidth(text, element) {
+        // 임시 캔버스를 사용하여 텍스트 너비 계산
+        const canvas = getTextWidth.canvas || (getTextWidth.canvas = document.createElement('canvas'));
+        const context = canvas.getContext('2d');
         
-        // 좌표 계산 (선택 영역 바로 위에 위치하도록)
-        return {
-            left: rect.left + (rect.width / 2), // 선택 영역의 가로 중앙
-            top: rect.top, // 선택 영역의 상단
-            bottom: rect.bottom, // 선택 영역의 하단
-            height: rect.height
-        };
+        // 요소의 폰트 스타일 적용
+        const fontStyle = getComputedStyle(element);
+        context.font = `${fontStyle.fontSize} ${fontStyle.fontFamily}`;
+        
+        // 텍스트 너비 계산 및 패딩 고려
+        const metrics = context.measureText(text);
+        const paddingLeft = parseInt(fontStyle.paddingLeft) || 0;
+        
+        return metrics.width + paddingLeft;
     }
     
     /**
@@ -387,10 +378,26 @@ const FloatingEditor = (function() {
         // 툴바 컨테이너 생성
         toolbarElement = document.createElement('div');
         toolbarElement.className = 'floating-editor';
+        toolbarElement.style.height = '36px'; // 툴바 높이를 36px로 고정
+        toolbarElement.style.margin = '0'; // 마진 제거
+        toolbarElement.style.padding = '0'; // 패딩 제거
+        toolbarElement.style.boxSizing = 'border-box'; // 박스 사이징 설정
+        toolbarElement.style.display = 'flex'; // 플렉스 레이아웃 사용
+        toolbarElement.style.alignItems = 'center'; // 세로 중앙 정렬
+        toolbarElement.style.justifyContent = 'center'; // 가로 중앙 정렬
+        toolbarElement.style.overflow = 'visible'; // 오버플로우 허용
         
         // 툴바 내부 요소 생성
         const toolbar = document.createElement('div');
         toolbar.className = 'floating-editor-toolbar';
+        toolbar.style.height = '36px'; // 툴바 내부 요소 높이도 36px로 고정
+        toolbar.style.margin = '0'; // 마진 제거
+        toolbar.style.padding = '0'; // 패딩 제거
+        toolbar.style.display = 'flex'; // 플렉스 레이아웃 사용
+        toolbar.style.alignItems = 'center'; // 세로 중앙 정렬
+        toolbar.style.justifyContent = 'center'; // 가로 중앙 정렬
+        toolbar.style.boxSizing = 'border-box'; // 박스 사이징 설정
+        toolbar.style.width = '100%'; // 너비 100%로 설정
         
         // 기능 버튼 추가
         if (config.features.bold) {
@@ -447,8 +454,30 @@ const FloatingEditor = (function() {
         const button = document.createElement('button');
         button.className = 'floating-editor-button';
         button.title = title;
-        button.innerHTML = `<span class="material-icons">${icon}</span>`;
+        button.style.height = '36px'; // 버튼 높이를 36px로 고정
+        button.style.width = '36px'; // 버튼 너비를 36px로 고정
+        button.style.padding = '0'; // 패딩 제거
+        button.style.margin = '0'; // 마진 제거
+        button.style.border = 'none'; // 테두리 제거
+        button.style.display = 'flex'; // 플렉스 레이아웃 사용
+        button.style.alignItems = 'center'; // 세로 중앙 정렬
+        button.style.justifyContent = 'center'; // 가로 중앙 정렬
+        button.style.boxSizing = 'border-box'; // 박스 사이징 설정
+        button.style.flexShrink = '0'; // 축소 방지
+        
+        // 아이콘 요소 생성 및 스타일 적용
+        const iconElement = document.createElement('span');
+        iconElement.className = 'material-icons';
+        iconElement.textContent = icon;
+        iconElement.style.fontSize = '24px'; // 아이콘 크기 설정
+        iconElement.style.lineHeight = '1'; // 라인 높이 조정
+        
+        // 아이콘을 버튼에 추가
+        button.appendChild(iconElement);
+        
+        // 클릭 이벤트 리스너 추가
         button.addEventListener('click', action);
+        
         return button;
     }
     
@@ -459,37 +488,117 @@ const FloatingEditor = (function() {
     function createToolbarSeparator() {
         const separator = document.createElement('div');
         separator.className = 'floating-editor-separator';
+        separator.style.height = '24px'; // 구분선 높이 설정
+        separator.style.width = '1px'; // 구분선 너비 설정
+        separator.style.margin = '0 4px'; // 좌우 마진만 설정
+        separator.style.padding = '0'; // 패딩 제거
+        separator.style.boxSizing = 'border-box'; // 박스 사이징 설정
+        separator.style.flexShrink = '0'; // 축소 방지
         return separator;
     }
     
     /**
      * 툴바 표시 함수
-     * @param {Object} coords - 좌표 정보
+     * @param {Object} position - 위치 정보 (top, left)
      */
-    function showToolbar(coords) {
+    function showToolbar(position) {
         if (!toolbarElement) return;
         
-        // 툴바 위치 설정
+        // 툴바 크기 정보
         const toolbarRect = toolbarElement.getBoundingClientRect();
+        const tbWidth = toolbarRect.width;
+        const tbHeight = 36; // 툴바 높이를 36px로 고정
         
-        // 가로 위치 계산 (선택 영역의 중앙에 툴바 배치)
-        const left = Math.max(10, Math.min(
-            coords.left - (toolbarRect.width / 2),
-            window.innerWidth - toolbarRect.width - 10
-        ));
+        // 1. 수평 위치 계산 - 선택 영역의 중앙에 배치하되 화면 경계를 벗어나지 않도록 조정
+        const tbLeft = Math.max(
+            window.scrollX + 10, // 왼쪽 최소 여백
+            Math.min(
+                position.left - (tbWidth / 2), // 선택 영역 중앙에 배치
+                window.scrollX + window.innerWidth - tbWidth - 10 // 오른쪽 최대 경계
+            )
+        );
         
-        // 세로 위치 계산 (선택 영역 바로 위에 툴바 배치)
-        // textarea의 경우 이미 추가 오프셋이 적용되어 있으므로 그대로 사용
-        const top = coords.top - toolbarRect.height - config.toolbarOffset;
+        // 2. 선택 영역 정보 계산
+        let selTop, selLeft, selWidth, selHeight;
         
-        // 화면 상단을 벗어나는 경우 또는 너무 가까운 경우 선택 영역 아래에 배치
-        const finalTop = top < 20 
-            ? coords.bottom + config.toolbarOffset 
-            : top;
+        if (currentSelection && currentSelection.isTextarea) {
+            // textarea의 경우 선택 영역 정보 계산
+            const element = currentSelection.element;
+            const rect = element.getBoundingClientRect();
+            
+            // 임시 요소를 사용하여 선택 영역의 위치 계산
+            const div = document.createElement('div');
+            div.style.position = 'absolute';
+            div.style.visibility = 'hidden';
+            div.style.whiteSpace = 'pre-wrap';
+            div.style.wordWrap = 'break-word';
+            div.style.width = getComputedStyle(element).width;
+            div.style.fontSize = getComputedStyle(element).fontSize;
+            div.style.fontFamily = getComputedStyle(element).fontFamily;
+            div.style.lineHeight = getComputedStyle(element).lineHeight;
+            div.style.padding = getComputedStyle(element).padding;
+            
+            // 선택 영역 앞의 텍스트
+            const textBeforeSelection = element.value.substring(0, currentSelection.start);
+            div.textContent = textBeforeSelection;
+            document.body.appendChild(div);
+            
+            // 선택 영역의 텍스트
+            const selectedText = element.value.substring(currentSelection.start, currentSelection.end);
+            const isMultiLine = selectedText.includes('\n');
+            
+            // 선택 영역의 위치 및 크기 계산
+            selTop = rect.top + div.clientHeight - element.scrollTop + window.scrollY;
+            selLeft = rect.left + parseInt(getComputedStyle(element).paddingLeft) + window.scrollX;
+            
+            if (isMultiLine) {
+                // 여러 줄 선택의 경우 너비는 textarea의 너비로 설정
+                selWidth = rect.width - parseInt(getComputedStyle(element).paddingLeft) - parseInt(getComputedStyle(element).paddingRight);
+                
+                // 선택 영역의 높이 계산 (대략적인 계산)
+                const lineHeight = parseInt(getComputedStyle(element).lineHeight) || 20;
+                const lineCount = (selectedText.match(/\n/g) || []).length + 1;
+                selHeight = lineHeight * lineCount;
+            } else {
+                // 한 줄 선택의 경우 선택 영역의 너비 계산
+                selWidth = getTextWidth(selectedText, element);
+                selHeight = parseInt(getComputedStyle(element).lineHeight) || 20;
+            }
+            
+            // 임시 요소 제거
+            document.body.removeChild(div);
+        } else if (currentSelection && !currentSelection.isTextarea) {
+            // contenteditable 요소의 경우 Range 사용
+            const range = currentSelection.range;
+            const rect = range.getBoundingClientRect();
+            
+            selTop = rect.top + window.scrollY;
+            selLeft = rect.left + window.scrollX;
+            selWidth = rect.width;
+            selHeight = rect.height;
+        } else {
+            // 선택 영역 정보가 없는 경우 기본값 설정
+            selTop = position.top;
+            selLeft = position.left;
+            selWidth = 0;
+            selHeight = 0;
+        }
         
-        // 위치 적용
-        toolbarElement.style.left = `${left}px`;
-        toolbarElement.style.top = `${finalTop}px`;
+        // 3. 수직 위치 계산 - 항상 선택 영역 위에 배치
+        // 선택 영역 위에 툴바 배치 (config.toolbarOffset 만큼 위로 이동)
+        let tbTop = selTop - tbHeight - config.toolbarOffset;
+        
+        // 화면 상단을 벗어나는 경우 최소한 화면 상단에 붙도록 조정
+        if (tbTop < window.scrollY + 10) {
+            tbTop = window.scrollY + 10;
+        }
+        
+        // 4. 위치 적용
+        toolbarElement.style.left = `${tbLeft}px`;
+        toolbarElement.style.top = `${tbTop}px`;
+        toolbarElement.style.height = `${tbHeight}px`; // 툴바 높이 고정
+        toolbarElement.style.position = 'absolute'; // 절대 위치 설정
+        toolbarElement.style.zIndex = '9999'; // z-index 설정
         
         // 툴바 표시
         toolbarElement.classList.add('visible');
@@ -497,10 +606,17 @@ const FloatingEditor = (function() {
         
         // 디버그 로그 추가
         console.log('툴바 표시:', {
-            coords,
-            left,
-            top,
-            finalTop,
+            position,
+            tbLeft,
+            tbTop,
+            tbWidth,
+            tbHeight,
+            selLeft,
+            selTop,
+            selWidth,
+            selHeight,
+            scrollX: window.scrollX,
+            scrollY: window.scrollY,
             selection: currentSelection
         });
     }
@@ -714,15 +830,8 @@ const FloatingEditor = (function() {
         hide: hideToolbar,
         show: () => {
             if (currentSelection) {
-                const coords = currentSelection.isTextarea
-                    ? getTextareaCoordinates(
-                        currentSelection.element, 
-                        currentSelection.start, 
-                        currentSelection.end
-                      )
-                    : getSelectionCoordinates(currentSelection.range);
-                
-                showToolbar(coords);
+                const position = getSelectionPosition(currentSelection.element);
+                showToolbar(position);
             }
         }
     };
