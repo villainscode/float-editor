@@ -8,9 +8,7 @@
 const FloatingEditor = (function() {
     // 프라이빗 변수
     let editorElements = [];
-    let activeEditor = null;
     let toolbarElement = null;
-    let debugElement = null;
     let currentSelection = null;
     let isToolbarVisible = false;
     
@@ -45,9 +43,9 @@ const FloatingEditor = (function() {
             ? document.querySelectorAll(selector) 
             : [selector];
         
-        // 각 요소에 에디터 기능 적용
+        // contenteditable 요소에만 에디터 기능 적용
         elements.forEach(element => {
-            if (element && !editorElements.includes(element)) {
+            if (element && !editorElements.includes(element) && element.hasAttribute('contenteditable')) {
                 setupEditor(element);
                 editorElements.push(element);
             }
@@ -81,75 +79,11 @@ const FloatingEditor = (function() {
      * @param {Element} element - 에디터로 설정할 DOM 요소
      */
     function setupEditor(element) {
-        // 요소가 textarea인 경우 특별 처리
-        const isTextarea = element.tagName.toLowerCase() === 'textarea';
-        
-        // 선택 이벤트 리스너 추가
-        if (isTextarea) {
-            // mouseup 이벤트를 추가하여 텍스트 선택 감지 개선
-            element.addEventListener('mouseup', handleTextareaSelection);
-            element.addEventListener('keyup', handleTextareaSelection);
-            // 더블 클릭 이벤트 추가
-            element.addEventListener('dblclick', handleTextareaSelection);
-            // select 이벤트는 일부 브라우저에서 일관되게 작동하지 않을 수 있음
-            element.addEventListener('select', handleTextareaSelection);
-        } else {
+        if (element.hasAttribute('contenteditable')) {
             element.addEventListener('mouseup', handleTextSelection);
             element.addEventListener('keyup', handleTextSelection);
-            // 더블 클릭 이벤트 추가
             element.addEventListener('dblclick', handleTextSelection);
         }
-    }
-    
-    /**
-     * textarea 선택 처리 함수 (textarea 전용)
-     * @param {Event} event - 이벤트 객체
-     */
-    function handleTextareaSelection(event) {
-        const textarea = event.target;
-        
-        // 더블 클릭 이벤트인 경우 약간의 지연 추가
-        if (event.type === 'dblclick') {
-            setTimeout(() => processTextareaSelection(textarea), 10);
-            return;
-        }
-        
-        processTextareaSelection(textarea);
-    }
-    
-    /**
-     * textarea 선택 처리 로직
-     * @param {Element} textarea - textarea 요소
-     */
-    function processTextareaSelection(textarea) {
-        // 선택 영역 가져오기
-        const start = textarea.selectionStart;
-        const end = textarea.selectionEnd;
-        
-        // 선택 영역이 없는 경우 툴바 숨김
-        if (start === end) {
-            hideToolbar();
-            return;
-        }
-        
-        // 선택 정보 저장
-        currentSelection = {
-            element: textarea,
-            isTextarea: true,
-            start,
-            end,
-            text: textarea.value.substring(start, end)
-        };
-        
-        // 선택 영역의 위치 계산 및 툴바 표시
-        const position = getSelectionPosition(textarea);
-        showToolbar(position);
-        
-        // 디버그 정보 업데이트
-        updateDebugInfo();
-        
-        // 현재 활성 에디터 설정
-        activeEditor = textarea;
     }
     
     /**
@@ -207,12 +141,6 @@ const FloatingEditor = (function() {
         // 선택 영역의 위치 계산 및 툴바 표시
         const position = getSelectionPosition(element);
         showToolbar(position);
-        
-        // 디버그 정보 업데이트
-        updateDebugInfo();
-        
-        // 현재 활성 에디터 설정
-        activeEditor = element;
     }
     
     /**
@@ -274,79 +202,29 @@ const FloatingEditor = (function() {
      * @returns {Object} 위치 정보 (top, left)
      */
     function getSelectionPosition(element) {
-        // 요소가 textarea인 경우와 contenteditable 요소인 경우 구분
-        if (element.tagName.toLowerCase() === 'textarea') {
-            // textarea의 위치 정보
-            const rect = element.getBoundingClientRect();
-            
-            // 선택 영역 정보
-            const start = element.selectionStart;
-            const end = element.selectionEnd;
-            
-            // 선택 영역의 위치 계산을 위해 임시 요소 생성
-            const div = document.createElement('div');
-            div.style.position = 'absolute';
-            div.style.visibility = 'hidden';
-            div.style.whiteSpace = 'pre-wrap';
-            div.style.wordWrap = 'break-word';
-            div.style.width = getComputedStyle(element).width;
-            div.style.fontSize = getComputedStyle(element).fontSize;
-            div.style.fontFamily = getComputedStyle(element).fontFamily;
-            div.style.lineHeight = getComputedStyle(element).lineHeight;
-            div.style.padding = getComputedStyle(element).padding;
-            
-            // 선택 영역 앞의 텍스트
-            const textBeforeSelection = element.value.substring(0, start);
-            div.textContent = textBeforeSelection;
-            document.body.appendChild(div);
-            
-            // 선택 영역의 위치 계산
-            const lineHeight = parseInt(getComputedStyle(element).lineHeight) || 20;
-            
-            // 스크롤 위치를 고려한 위치 계산
-            // 선택 영역 위에 툴바 배치 (5px 위로 이동)
-            const top = rect.top + div.clientHeight - element.scrollTop + window.scrollY - 5;
-            
-            // 선택 영역의 가로 중앙에 툴바 배치
-            const selectedText = element.value.substring(start, end);
-            const isMultiLine = selectedText.includes('\n');
-            
-            // 가로 위치 계산 (선택 영역의 시작 부분 또는 중앙)
-            let left;
-            if (isMultiLine) {
-                // 여러 줄 선택 시 왼쪽 정렬
-                left = rect.left + parseInt(getComputedStyle(element).paddingLeft) + window.scrollX;
-            } else {
-                // 한 줄 선택 시 선택 영역의 중앙에 배치
-                const textWidth = getTextWidth(textBeforeSelection, element);
-                const selectionWidth = getTextWidth(selectedText, element);
-                left = rect.left + textWidth + (selectionWidth / 2) + window.scrollX;
-            }
-            
-            // 임시 요소 제거
-            document.body.removeChild(div);
-            
-            return { top, left };
-        } else {
-            // contenteditable 요소의 경우 window.getSelection() 사용
-            const selection = window.getSelection();
-            if (!selection || selection.rangeCount === 0) {
-                return { top: 0, left: 0 };
-            }
-            
-            // 선택 영역의 Range 가져오기
-            const range = selection.getRangeAt(0);
-            
-            // Range의 경계 정보 가져오기
-            const rect = range.getBoundingClientRect();
-            
-            // 스크롤 위치를 고려한 위치 계산
-            // 선택 영역 위에 툴바 배치 (5px 위로 이동)
-            return {
-                top: rect.top + window.scrollY - 5,
-                left: rect.left + (rect.width / 2) + window.scrollX // 선택 영역의 가로 중앙
-            };
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) {
+            return { top: 0, left: 0 };
         }
+        const range = selection.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+        
+        // 선택 영역 중앙에 툴바 배치
+        const lineHeight = parseInt(getComputedStyle(element).lineHeight) || parseInt(getComputedStyle(element).fontSize) || 20;
+        
+        return {
+            top: rect.top + window.scrollY - (lineHeight / 2),
+            left: rect.left + (rect.width / 2) + window.scrollX,
+            width: rect.width,
+            height: rect.height,
+            debug: {
+                selectionTop: Math.round(rect.top),
+                selectionLeft: Math.round(rect.left),
+                selectionWidth: Math.round(rect.width),
+                selectionHeight: Math.round(rect.height),
+                lineHeight
+            }
+        };
     }
     
     /**
@@ -386,6 +264,22 @@ const FloatingEditor = (function() {
         toolbarElement.style.alignItems = 'center'; // 세로 중앙 정렬
         toolbarElement.style.justifyContent = 'center'; // 가로 중앙 정렬
         toolbarElement.style.overflow = 'visible'; // 오버플로우 허용
+        
+        // 디버그 정보 요소 생성
+        const debugInfo = document.createElement('div');
+        debugInfo.className = 'floating-editor-debug';
+        debugInfo.style.position = 'absolute';
+        debugInfo.style.top = '-20px';
+        debugInfo.style.left = '0';
+        debugInfo.style.width = '100%';
+        debugInfo.style.textAlign = 'center';
+        debugInfo.style.fontSize = '10px';
+        debugInfo.style.fontFamily = 'monospace';
+        debugInfo.style.color = '#666';
+        debugInfo.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+        debugInfo.style.padding = '2px';
+        debugInfo.style.borderRadius = '3px';
+        debugInfo.style.whiteSpace = 'nowrap';
         
         // 툴바 내부 요소 생성
         const toolbar = document.createElement('div');
@@ -436,8 +330,6 @@ const FloatingEditor = (function() {
         
         // 툴바를 컨테이너에 추가
         toolbarElement.appendChild(toolbar);
-        
-        // 디버그 정보 요소는 더 이상 추가하지 않음
         
         // 툴바를 문서에 추가
         document.body.appendChild(toolbarElement);
@@ -509,116 +401,47 @@ const FloatingEditor = (function() {
         const tbWidth = toolbarRect.width;
         const tbHeight = 36; // 툴바 높이를 36px로 고정
         
-        // 1. 수평 위치 계산 - 선택 영역의 중앙에 배치하되 화면 경계를 벗어나지 않도록 조정
-        const tbLeft = Math.max(
-            window.scrollX + 10, // 왼쪽 최소 여백
-            Math.min(
-                position.left - (tbWidth / 2), // 선택 영역 중앙에 배치
-                window.scrollX + window.innerWidth - tbWidth - 10 // 오른쪽 최대 경계
-            )
-        );
+        // 선택 영역 정보 가져오기
+        const selection = window.getSelection();
+        const range = selection.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
         
-        // 2. 선택 영역 정보 계산
-        let selTop, selLeft, selWidth, selHeight;
+        // 툴바 위치 계산 (선택 영역 중앙)
+        let tbLeft = rect.left + (rect.width / 2) - (tbWidth / 2) + window.scrollX;
+        let tbTop = rect.top - tbHeight - 10 + window.scrollY; // 10px 위에 배치
         
-        if (currentSelection && currentSelection.isTextarea) {
-            // textarea의 경우 선택 영역 정보 계산
-            const element = currentSelection.element;
-            const rect = element.getBoundingClientRect();
-            
-            // 임시 요소를 사용하여 선택 영역의 위치 계산
-            const div = document.createElement('div');
-            div.style.position = 'absolute';
-            div.style.visibility = 'hidden';
-            div.style.whiteSpace = 'pre-wrap';
-            div.style.wordWrap = 'break-word';
-            div.style.width = getComputedStyle(element).width;
-            div.style.fontSize = getComputedStyle(element).fontSize;
-            div.style.fontFamily = getComputedStyle(element).fontFamily;
-            div.style.lineHeight = getComputedStyle(element).lineHeight;
-            div.style.padding = getComputedStyle(element).padding;
-            
-            // 선택 영역 앞의 텍스트
-            const textBeforeSelection = element.value.substring(0, currentSelection.start);
-            div.textContent = textBeforeSelection;
-            document.body.appendChild(div);
-            
-            // 선택 영역의 텍스트
-            const selectedText = element.value.substring(currentSelection.start, currentSelection.end);
-            const isMultiLine = selectedText.includes('\n');
-            
-            // 선택 영역의 위치 및 크기 계산
-            selTop = rect.top + div.clientHeight - element.scrollTop + window.scrollY;
-            selLeft = rect.left + parseInt(getComputedStyle(element).paddingLeft) + window.scrollX;
-            
-            if (isMultiLine) {
-                // 여러 줄 선택의 경우 너비는 textarea의 너비로 설정
-                selWidth = rect.width - parseInt(getComputedStyle(element).paddingLeft) - parseInt(getComputedStyle(element).paddingRight);
-                
-                // 선택 영역의 높이 계산 (대략적인 계산)
-                const lineHeight = parseInt(getComputedStyle(element).lineHeight) || 20;
-                const lineCount = (selectedText.match(/\n/g) || []).length + 1;
-                selHeight = lineHeight * lineCount;
-            } else {
-                // 한 줄 선택의 경우 선택 영역의 너비 계산
-                selWidth = getTextWidth(selectedText, element);
-                selHeight = parseInt(getComputedStyle(element).lineHeight) || 20;
-            }
-            
-            // 임시 요소 제거
-            document.body.removeChild(div);
-        } else if (currentSelection && !currentSelection.isTextarea) {
-            // contenteditable 요소의 경우 Range 사용
-            const range = currentSelection.range;
-            const rect = range.getBoundingClientRect();
-            
-            selTop = rect.top + window.scrollY;
-            selLeft = rect.left + window.scrollX;
-            selWidth = rect.width;
-            selHeight = rect.height;
-        } else {
-            // 선택 영역 정보가 없는 경우 기본값 설정
-            selTop = position.top;
-            selLeft = position.left;
-            selWidth = 0;
-            selHeight = 0;
+        // 화면 경계 처리
+        // 왼쪽 경계
+        if (tbLeft < window.scrollX + 10) {
+            tbLeft = window.scrollX + 10;
         }
         
-        // 3. 수직 위치 계산 - 항상 선택 영역 위에 배치
-        // 선택 영역 위에 툴바 배치 (config.toolbarOffset 만큼 위로 이동)
-        let tbTop = selTop - tbHeight - config.toolbarOffset;
+        // 오른쪽 경계
+        if (tbLeft + tbWidth > window.scrollX + window.innerWidth - 10) {
+            tbLeft = window.scrollX + window.innerWidth - tbWidth - 10;
+        }
         
-        // 화면 상단을 벗어나는 경우 최소한 화면 상단에 붙도록 조정
+        // 상단 경계 처리
         if (tbTop < window.scrollY + 10) {
-            tbTop = window.scrollY + 10;
+            // 선택 영역 아래에 툴바 표시
+            tbTop = rect.bottom + 10 + window.scrollY;
         }
         
-        // 4. 위치 적용
+        // 툴바 위치 설정
         toolbarElement.style.left = `${tbLeft}px`;
         toolbarElement.style.top = `${tbTop}px`;
-        toolbarElement.style.height = `${tbHeight}px`; // 툴바 높이 고정
-        toolbarElement.style.position = 'absolute'; // 절대 위치 설정
-        toolbarElement.style.zIndex = '9999'; // z-index 설정
+        toolbarElement.style.position = 'absolute';
+        toolbarElement.style.zIndex = '9999';
+        
+        // 디버그 정보 업데이트
+        const debugInfo = toolbarElement.querySelector('.floating-editor-debug');
+        if (debugInfo) {
+            debugInfo.textContent = `Selection(${Math.round(rect.left)}, ${Math.round(rect.top)}) Width: ${Math.round(rect.width)} Height: ${Math.round(rect.height)}`;
+        }
         
         // 툴바 표시
         toolbarElement.classList.add('visible');
         isToolbarVisible = true;
-        
-        // 디버그 로그 추가
-        console.log('툴바 표시:', {
-            position,
-            tbLeft,
-            tbTop,
-            tbWidth,
-            tbHeight,
-            selLeft,
-            selTop,
-            selWidth,
-            selHeight,
-            scrollX: window.scrollX,
-            scrollY: window.scrollY,
-            selection: currentSelection
-        });
     }
     
     /**
@@ -652,187 +475,531 @@ const FloatingEditor = (function() {
         hideToolbar();
     }
     
-    /**
-     * 디버그 정보 업데이트 함수
-     */
-    function updateDebugInfo() {
-        if (!currentSelection) return;
-        
-        // 메인 디버그 정보 요소만 업데이트
-        const mainDebugElement = document.getElementById('debug-info');
-        if (mainDebugElement) {
-            const { start, end, text } = currentSelection;
-            mainDebugElement.textContent = `선택 영역: 시작 인덱스 ${start}, 종료 인덱스 ${end}, 길이 ${text.length}자`;
-        }
-    }
+
     
     /**
      * 서식 적용 함수 - 굵게
      */
     function applyBold() {
-        applyFormatting('bold', '<b>$1</b>', 'editor-bold');
+        const selection = window.getSelection();
+        if (!selection.rangeCount) return;
+
+        const range = selection.getRangeAt(0);
+        const selectedText = range.toString();
+        if (!selectedText) return;
+
+        // 현재 툴바 위치 저장
+        const currentTop = parseInt(toolbarElement.style.top);
+        const currentLeft = parseInt(toolbarElement.style.left);
+
+        // 선택된 영역의 본사본 저장
+        const rangeClone = range.cloneRange();
+        const fragment = rangeClone.extractContents();
+        const tempDiv = document.createElement('div');
+        tempDiv.appendChild(fragment);
+
+        // 이미 bold 태그가 적용되어 있는지 확인
+        const hasBoldTag = tempDiv.querySelector('b, strong') !== null;
+
+        if (hasBoldTag) {
+            // bold 태그 제거
+            const plainText = document.createDocumentFragment();
+            function extractTextWithoutBold(node) {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    plainText.appendChild(node.cloneNode(true));
+                } else if (node.nodeType === Node.ELEMENT_NODE) {
+                    if (node.tagName.toLowerCase() === 'b' || node.tagName.toLowerCase() === 'strong') {
+                        // bold 태그 내부의 콘텐츠만 추출
+                        Array.from(node.childNodes).forEach(child => extractTextWithoutBold(child));
+                    } else {
+                        // 다른 태그는 유지
+                        const clone = node.cloneNode(false);
+                        Array.from(node.childNodes).forEach(child => {
+                            extractTextWithoutBold(child);
+                            if (child.nodeType === Node.ELEMENT_NODE) {
+                                Array.from(plainText.childNodes).forEach(extracted => clone.appendChild(extracted.cloneNode(true)));
+                                plainText.textContent = '';
+                            }
+                        });
+                        if (clone.hasChildNodes()) {
+                            plainText.appendChild(clone);
+                        }
+                    }
+                }
+            }
+
+            Array.from(tempDiv.childNodes).forEach(node => extractTextWithoutBold(node));
+            
+            // 원래 내용 삽입
+            range.deleteContents();
+            range.insertNode(plainText);
+
+            // 선택 영역 복원
+            selection.removeAllRanges();
+            selection.addRange(range);
+        } else {
+            // bold 태그 추가
+            range.deleteContents();
+            const boldElement = document.createElement('b');
+            boldElement.innerHTML = tempDiv.innerHTML;
+            range.insertNode(boldElement);
+
+            // 선택 영역 설정
+            const newRange = document.createRange();
+            newRange.selectNodeContents(boldElement);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+        }
+
+        // 툴바 위치 유지
+        toolbarElement.style.top = `${currentTop}px`;
+        toolbarElement.style.left = `${currentLeft}px`;
     }
     
     /**
      * 서식 적용 함수 - 기울임
      */
     function applyItalic() {
-        applyFormatting('italic', '<i>$1</i>', 'editor-italic');
+        const selection = window.getSelection();
+        if (!selection.rangeCount) return;
+
+        const range = selection.getRangeAt(0);
+        const selectedText = range.toString();
+        if (!selectedText) return;
+
+        // 현재 툴바 위치 저장
+        const currentTop = parseInt(toolbarElement.style.top);
+        const currentLeft = parseInt(toolbarElement.style.left);
+
+        // 선택된 영역의 본사본 저장
+        const rangeClone = range.cloneRange();
+        const fragment = rangeClone.extractContents();
+        const tempDiv = document.createElement('div');
+        tempDiv.appendChild(fragment);
+
+        // 이미 italic 태그가 적용되어 있는지 확인
+        const hasItalicTag = tempDiv.querySelector('i, em') !== null;
+
+        if (hasItalicTag) {
+            // italic 태그 제거
+            const plainText = document.createDocumentFragment();
+            function extractTextWithoutItalic(node) {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    plainText.appendChild(node.cloneNode(true));
+                } else if (node.nodeType === Node.ELEMENT_NODE) {
+                    if (node.tagName.toLowerCase() === 'i' || node.tagName.toLowerCase() === 'em') {
+                        // italic 태그 내부의 콘텐츠만 추출
+                        Array.from(node.childNodes).forEach(child => extractTextWithoutItalic(child));
+                    } else {
+                        // 다른 태그는 유지
+                        const clone = node.cloneNode(false);
+                        Array.from(node.childNodes).forEach(child => {
+                            extractTextWithoutItalic(child);
+                            if (child.nodeType === Node.ELEMENT_NODE) {
+                                Array.from(plainText.childNodes).forEach(extracted => clone.appendChild(extracted.cloneNode(true)));
+                                plainText.textContent = '';
+                            }
+                        });
+                        if (clone.hasChildNodes()) {
+                            plainText.appendChild(clone);
+                        }
+                    }
+                }
+            }
+
+            Array.from(tempDiv.childNodes).forEach(node => extractTextWithoutItalic(node));
+            
+            // 원래 내용 삽입
+            range.deleteContents();
+            range.insertNode(plainText);
+
+            // 선택 영역 복원
+            selection.removeAllRanges();
+            selection.addRange(range);
+        } else {
+            // italic 태그 추가
+            range.deleteContents();
+            const italicElement = document.createElement('i');
+            italicElement.innerHTML = tempDiv.innerHTML;
+            range.insertNode(italicElement);
+
+            // 선택 영역 설정
+            const newRange = document.createRange();
+            newRange.selectNodeContents(italicElement);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+        }
+
+        // 툴바 위치 유지
+        toolbarElement.style.top = `${currentTop}px`;
+        toolbarElement.style.left = `${currentLeft}px`;
     }
     
     /**
      * 서식 적용 함수 - 밑줄
      */
     function applyUnderline() {
-        applyFormatting('underline', '<u>$1</u>', 'editor-underline');
+        const selection = window.getSelection();
+        if (!selection.rangeCount) return;
+
+        const range = selection.getRangeAt(0);
+        const selectedText = range.toString();
+        if (!selectedText) return;
+
+        // 현재 툴바 위치 저장
+        const currentTop = parseInt(toolbarElement.style.top);
+        const currentLeft = parseInt(toolbarElement.style.left);
+
+        // 선택된 영역의 본사본 저장
+        const rangeClone = range.cloneRange();
+        const fragment = rangeClone.extractContents();
+        const tempDiv = document.createElement('div');
+        tempDiv.appendChild(fragment);
+
+        // 이미 underline 태그가 적용되어 있는지 확인
+        const hasUnderlineTag = tempDiv.querySelector('u') !== null;
+
+        if (hasUnderlineTag) {
+            // underline 태그 제거
+            const plainText = document.createDocumentFragment();
+            function extractTextWithoutUnderline(node) {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    plainText.appendChild(node.cloneNode(true));
+                } else if (node.nodeType === Node.ELEMENT_NODE) {
+                    if (node.tagName.toLowerCase() === 'u') {
+                        // underline 태그 내부의 콘텐츠만 추출
+                        Array.from(node.childNodes).forEach(child => extractTextWithoutUnderline(child));
+                    } else {
+                        // 다른 태그는 유지
+                        const clone = node.cloneNode(false);
+                        Array.from(node.childNodes).forEach(child => {
+                            extractTextWithoutUnderline(child);
+                            if (child.nodeType === Node.ELEMENT_NODE) {
+                                Array.from(plainText.childNodes).forEach(extracted => clone.appendChild(extracted.cloneNode(true)));
+                                plainText.textContent = '';
+                            }
+                        });
+                        if (clone.hasChildNodes()) {
+                            plainText.appendChild(clone);
+                        }
+                    }
+                }
+            }
+
+            Array.from(tempDiv.childNodes).forEach(node => extractTextWithoutUnderline(node));
+            
+            // 원래 내용 삽입
+            range.deleteContents();
+            range.insertNode(plainText);
+
+            // 선택 영역 복원
+            selection.removeAllRanges();
+            selection.addRange(range);
+        } else {
+            // underline 태그 추가
+            range.deleteContents();
+            const underlineElement = document.createElement('u');
+            underlineElement.innerHTML = tempDiv.innerHTML;
+            range.insertNode(underlineElement);
+
+            // 선택 영역 설정
+            const newRange = document.createRange();
+            newRange.selectNodeContents(underlineElement);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+        }
+
+        // 툴바 위치 유지
+        toolbarElement.style.top = `${currentTop}px`;
+        toolbarElement.style.left = `${currentLeft}px`;
     }
     
     /**
      * 서식 적용 함수 - 취소선
      */
     function applyStrikethrough() {
-        applyFormatting('strikethrough', '<s>$1</s>', 'editor-strikethrough');
+        const selection = window.getSelection();
+        if (!selection.rangeCount) return;
+
+        const range = selection.getRangeAt(0);
+        const selectedText = range.toString();
+        if (!selectedText) return;
+
+        // 현재 툴바 위치 저장
+        const currentTop = parseInt(toolbarElement.style.top);
+        const currentLeft = parseInt(toolbarElement.style.left);
+
+        // 선택된 영역의 본사본 저장
+        const rangeClone = range.cloneRange();
+        const fragment = rangeClone.extractContents();
+        const tempDiv = document.createElement('div');
+        tempDiv.appendChild(fragment);
+
+        // 이미 strikethrough 태그가 적용되어 있는지 확인
+        const hasStrikeTag = tempDiv.querySelector('s, strike, del') !== null;
+
+        if (hasStrikeTag) {
+            // strikethrough 태그 제거
+            const plainText = document.createDocumentFragment();
+            function extractTextWithoutStrike(node) {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    plainText.appendChild(node.cloneNode(true));
+                } else if (node.nodeType === Node.ELEMENT_NODE) {
+                    if (node.tagName.toLowerCase() === 's' || 
+                        node.tagName.toLowerCase() === 'strike' || 
+                        node.tagName.toLowerCase() === 'del') {
+                        // strikethrough 태그 내부의 콘텐츠만 추출
+                        Array.from(node.childNodes).forEach(child => extractTextWithoutStrike(child));
+                    } else {
+                        // 다른 태그는 유지
+                        const clone = node.cloneNode(false);
+                        Array.from(node.childNodes).forEach(child => {
+                            extractTextWithoutStrike(child);
+                            if (child.nodeType === Node.ELEMENT_NODE) {
+                                Array.from(plainText.childNodes).forEach(extracted => clone.appendChild(extracted.cloneNode(true)));
+                                plainText.textContent = '';
+                            }
+                        });
+                        if (clone.hasChildNodes()) {
+                            plainText.appendChild(clone);
+                        }
+                    }
+                }
+            }
+
+            Array.from(tempDiv.childNodes).forEach(node => extractTextWithoutStrike(node));
+            
+            // 원래 내용 삽입
+            range.deleteContents();
+            range.insertNode(plainText);
+
+            // 선택 영역 복원
+            selection.removeAllRanges();
+            selection.addRange(range);
+        } else {
+            // strikethrough 태그 추가
+            range.deleteContents();
+            const strikeElement = document.createElement('s');
+            strikeElement.innerHTML = tempDiv.innerHTML;
+            range.insertNode(strikeElement);
+
+            // 선택 영역 설정
+            const newRange = document.createRange();
+            newRange.selectNodeContents(strikeElement);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+        }
+
+        // 툴바 위치 유지
+        toolbarElement.style.top = `${currentTop}px`;
+        toolbarElement.style.left = `${currentLeft}px`;
     }
     
     /**
      * 서식 적용 함수 - 코드
      */
     function applyCode() {
-        applyFormatting('code', '<code>$1</code>', 'editor-code');
+        const selection = window.getSelection();
+        if (!selection.rangeCount) return;
+
+        const range = selection.getRangeAt(0);
+        const selectedText = range.toString();
+        if (!selectedText) return;
+
+        // 현재 툴바 위치와 선택 영역 저장
+        const currentTop = parseInt(toolbarElement.style.top);
+        const currentLeft = parseInt(toolbarElement.style.left);
+
+        // 선택된 영역의 본사본 저장
+        const rangeClone = range.cloneRange();
+        const fragment = rangeClone.extractContents();
+        const tempDiv = document.createElement('div');
+        tempDiv.appendChild(fragment);
+
+        // 이미 code 태그가 적용되어 있는지 확인
+        const hasCodeTag = tempDiv.querySelector('code') !== null;
+
+        if (hasCodeTag) {
+            // code 태그 제거
+            const plainText = document.createDocumentFragment();
+            function extractTextWithoutCode(node) {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    plainText.appendChild(node.cloneNode(true));
+                } else if (node.nodeType === Node.ELEMENT_NODE) {
+                    if (node.tagName.toLowerCase() === 'code') {
+                        // code 태그 내부의 콘텐츠만 추출
+                        Array.from(node.childNodes).forEach(child => extractTextWithoutCode(child));
+                    } else {
+                        // 다른 태그는 유지
+                        const clone = node.cloneNode(false);
+                        Array.from(node.childNodes).forEach(child => {
+                            extractTextWithoutCode(child);
+                            if (child.nodeType === Node.ELEMENT_NODE) {
+                                Array.from(plainText.childNodes).forEach(extracted => clone.appendChild(extracted.cloneNode(true)));
+                                plainText.textContent = '';
+                            }
+                        });
+                        if (clone.hasChildNodes()) {
+                            plainText.appendChild(clone);
+                        }
+                    }
+                }
+            }
+
+            Array.from(tempDiv.childNodes).forEach(node => extractTextWithoutCode(node));
+            
+            // 원래 내용 삽입
+            range.deleteContents();
+            range.insertNode(plainText);
+
+            // 선택 영역 복원
+            selection.removeAllRanges();
+            selection.addRange(range);
+        } else {
+            // code 태그 추가
+            range.deleteContents();
+            const codeElement = document.createElement('code');
+            codeElement.innerHTML = tempDiv.innerHTML;
+            range.insertNode(codeElement);
+
+            // 선택 영역 설정
+            const newRange = document.createRange();
+            newRange.selectNodeContents(codeElement);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+        }
+
+        // 툴바 위치 유지
+        toolbarElement.style.top = `${currentTop}px`;
+        toolbarElement.style.left = `${currentLeft}px`;
     }
     
     /**
      * 서식 적용 함수 - 링크
      */
     function applyLink() {
-        const url = prompt('링크 URL을 입력하세요:', 'https://');
-        if (url) {
-            applyFormatting('link', `<a href="${url}">$1</a>`, '');
+        const selection = window.getSelection();
+        if (!selection.rangeCount) return;
+
+        const range = selection.getRangeAt(0);
+        const selectedText = range.toString();
+        if (!selectedText) return;
+
+        // 현재 툴바 위치 저장
+        const currentTop = parseInt(toolbarElement.style.top);
+        const currentLeft = parseInt(toolbarElement.style.left);
+
+        // 선택된 영역의 본사본 저장
+        const rangeClone = range.cloneRange();
+        const fragment = rangeClone.extractContents();
+        const tempDiv = document.createElement('div');
+        tempDiv.appendChild(fragment);
+
+        // 이미 link 태그가 적용되어 있는지 확인
+        const hasLinkTag = tempDiv.querySelector('a') !== null;
+
+        if (hasLinkTag) {
+            // link 태그 제거
+            const plainText = document.createDocumentFragment();
+            function extractTextWithoutLink(node) {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    plainText.appendChild(node.cloneNode(true));
+                } else if (node.nodeType === Node.ELEMENT_NODE) {
+                    if (node.tagName.toLowerCase() === 'a') {
+                        // link 태그 내부의 콘텐츠만 추출
+                        Array.from(node.childNodes).forEach(child => extractTextWithoutLink(child));
+                    } else {
+                        // 다른 태그는 유지
+                        const clone = node.cloneNode(false);
+                        Array.from(node.childNodes).forEach(child => {
+                            extractTextWithoutLink(child);
+                            if (child.nodeType === Node.ELEMENT_NODE) {
+                                Array.from(plainText.childNodes).forEach(extracted => clone.appendChild(extracted.cloneNode(true)));
+                                plainText.textContent = '';
+                            }
+                        });
+                        if (clone.hasChildNodes()) {
+                            plainText.appendChild(clone);
+                        }
+                    }
+                }
+            }
+
+            Array.from(tempDiv.childNodes).forEach(node => extractTextWithoutLink(node));
+            
+            // 원래 내용 삽입
+            range.deleteContents();
+            range.insertNode(plainText);
+
+            // 선택 영역 복원
+            selection.removeAllRanges();
+            selection.addRange(range);
+        } else {
+            // link 태그 추가
+            const url = prompt('링크 URL을 입력하세요:', 'https://');
+            if (url) {
+                range.deleteContents();
+                const linkElement = document.createElement('a');
+                linkElement.href = url;
+                linkElement.innerHTML = tempDiv.innerHTML;
+                range.insertNode(linkElement);
+
+                // 선택 영역 설정
+                const newRange = document.createRange();
+                newRange.selectNodeContents(linkElement);
+                selection.removeAllRanges();
+                selection.addRange(newRange);
+            }
         }
+
+        // 툴바 위치 유지
+        toolbarElement.style.top = `${currentTop}px`;
+        toolbarElement.style.left = `${currentLeft}px`;
     }
     
     /**
      * 서식 지우기 함수
      */
     function clearFormatting() {
-        if (!currentSelection) return;
+        const selection = window.getSelection();
+        if (!selection.rangeCount) return;
         
-        const { element, isTextarea, start, end, range, text } = currentSelection;
+        const range = selection.getRangeAt(0);
+        const selectedText = range.toString();
+        if (!selectedText) return;
         
-        if (isTextarea) {
-            // HTML 태그 제거
-            const cleanText = text.replace(/<[^>]*>/g, '');
-            
-            // 텍스트 교체
-            element.value = element.value.substring(0, start) + 
-                            cleanText + 
-                            element.value.substring(end);
-            
-            // 선택 영역 유지
-            element.setSelectionRange(start, start + cleanText.length);
-            
-        } else {
-            // 현재 선택 영역의 HTML 내용 가져오기
-            const fragment = range.cloneContents();
-            const tempDiv = document.createElement('div');
-            tempDiv.appendChild(fragment);
-            
-            // HTML 태그 제거
-            const cleanText = tempDiv.textContent;
-            
-            // 선택 영역 삭제 후 텍스트 삽입
-            range.deleteContents();
-            range.insertNode(document.createTextNode(cleanText));
-            
-            // 선택 영역 업데이트
-            const newRange = document.createRange();
-            newRange.setStart(range.startContainer, range.startOffset);
-            newRange.setEnd(range.startContainer, range.startOffset + cleanText.length);
-            
-            const selection = window.getSelection();
-            selection.removeAllRanges();
-            selection.addRange(newRange);
-        }
+        // 현재 툴바 위치 저장
+        const currentTop = parseInt(toolbarElement.style.top);
+        const currentLeft = parseInt(toolbarElement.style.left);
         
-        // 툴바 숨김
-        hideToolbar();
+        // 선택된 텍스트를 본사하여 처리
+        const rangeClone = range.cloneRange();
+        const fragment = rangeClone.extractContents();
+        
+        // 순수 텍스트만 추출
+        const plainText = document.createTextNode(fragment.textContent);
+        
+        // 원래 내용 삽입
+        range.deleteContents();
+        range.insertNode(plainText);
+        
+        // 선택 영역 복원
+        const newRange = document.createRange();
+        newRange.setStart(plainText, 0);
+        newRange.setEnd(plainText, plainText.textContent.length);
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+        
+        // 툴바 위치 유지
+        toolbarElement.style.top = `${currentTop}px`;
+        toolbarElement.style.left = `${currentLeft}px`;
     }
     
-    /**
-     * 서식 적용 공통 함수
-     * @param {string} type - 서식 유형
-     * @param {string} htmlTemplate - HTML 템플릿
-     * @param {string} className - 적용할 클래스 이름
-     */
-    function applyFormatting(type, htmlTemplate, className) {
-        if (!currentSelection) return;
-        
-        const { element, isTextarea, start, end, range, text } = currentSelection;
-        
-        if (isTextarea) {
-            // HTML 태그 삽입
-            const formattedText = htmlTemplate.replace('$1', text);
-            
-            // 텍스트 교체
-            element.value = element.value.substring(0, start) + 
-                            formattedText + 
-                            element.value.substring(end);
-            
-            // 선택 영역 업데이트
-            const newEnd = start + formattedText.length;
-            element.setSelectionRange(start, newEnd);
-            
-            // 포커스 유지
-            element.focus();
-            
-        } else {
-            // contenteditable 요소의 경우
-            if (className) {
-                // 스팬 요소 생성 및 클래스 추가
-                const span = document.createElement('span');
-                span.className = className;
-                
-                // 선택 영역의 내용을 스팬으로 감싸기
-                range.surroundContents(span);
-                
-            } else {
-                // HTML 직접 삽입 (링크 등)
-                const formattedText = htmlTemplate.replace('$1', text);
-                
-                // 임시 요소에 HTML 파싱
-                const tempDiv = document.createElement('div');
-                tempDiv.innerHTML = formattedText;
-                const fragment = document.createDocumentFragment();
-                
-                // 모든 자식 노드를 프래그먼트로 이동
-                while (tempDiv.firstChild) {
-                    fragment.appendChild(tempDiv.firstChild);
-                }
-                
-                // 선택 영역 삭제 후 HTML 삽입
-                range.deleteContents();
-                range.insertNode(fragment);
-            }
-            
-            // 선택 영역 초기화
-            document.getSelection().removeAllRanges();
-        }
-        
-        // 툴바 숨김
-        hideToolbar();
-    }
+
     
     // 공개 API
     return {
         init,
-        getToolbarElement: () => toolbarElement,
-        isVisible: () => isToolbarVisible,
-        hide: hideToolbar,
-        show: () => {
-            if (currentSelection) {
-                const position = getSelectionPosition(currentSelection.element);
-                showToolbar(position);
-            }
-        }
+        hide: hideToolbar
     };
 })(); 
