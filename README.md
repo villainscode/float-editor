@@ -34,8 +34,6 @@ JavaScript에서 다음과 같이 에디터를 초기화합니다:
 ```javascript
 // DOM이 로드된 후 에디터 초기화
 document.addEventListener('DOMContentLoaded', function() {
-    // textarea에 에디터 적용
-    FloatingEditor.init('#editor-textarea');
     
     // 편집 가능한 div에 에디터 적용
     FloatingEditor.init('#editor-div');

@@ -1,14 +1,16 @@
 /**
- * FloatingEditor - 독립형 웹 에디터 플러그인
+ * FixedEditor - 독립형 웹 에디터 플러그인
  * 
  * 이 플러그인은 어떤 웹페이지에도 쉽게 통합할 수 있는 독립형 리치 텍스트 에디터를 제공합니다.
- * 텍스트 선택 시 플로팅 툴바가 나타나며, 사용자는 선택한 텍스트에 서식을 적용할 수 있습니다.
+ * 텍스트 편집을 위한 고정 툴바가 페이지 상단에 표시되며, 사용자는 선택한 텍스트에 서식을 적용할 수 있습니다.
  */
 
 const FloatingEditor = (function() {
     // 프라이빗 변수
     let editorElements = [];
     let toolbarElement = null;
+    let currentSelection = null; // 추가: 현재 선택 정보 저장
+    let isToolbarVisible = true; // 추가: 툴바 가시성 상태 - 업데이트되지 않지만 API 호환성을 위해 유지
     
     // 선택 영역 저장
     let savedRange = null;
@@ -70,9 +72,10 @@ const FloatingEditor = (function() {
         // 툴바가 아직 생성되지 않은 경우 생성
         if (!toolbarElement) {
             createToolbar();
+            showToolbar(); // 항상 툴바 표시
         }
         
-        // 문서 클릭 이벤트 리스너 추가 (툴바 숨김 처리)
+        // 문서 클릭 이벤트 리스너 추가 (헤딩 레이어 처리용)
         document.addEventListener('click', handleDocumentClick);
         
         return {
@@ -126,17 +129,15 @@ const FloatingEditor = (function() {
         // 현재 선택 정보 가져오기
         const selection = window.getSelection();
         
-        // 선택 영역이 없거나 빈 경우 툴바 숨김
+        // 선택 영역이 없거나 빈 경우 처리
         if (!selection || selection.isCollapsed) {
-            hideToolbar();
             return;
         }
         
         const range = selection.getRangeAt(0);
         
-        // 선택 영역이 없는 경우 툴바 숨김
+        // 선택 영역이 없는 경우 처리
         if (range.collapsed) {
-            hideToolbar();
             return;
         }
         
@@ -154,9 +155,8 @@ const FloatingEditor = (function() {
             end: endIndex
         };
         
-        // 선택 영역의 위치 계산 및 툴바 표시
-        const position = getSelectionPosition(element);
-        showToolbar(position);
+        // 툴바 표시
+        showToolbar();
     }
     
     /**
@@ -213,70 +213,35 @@ const FloatingEditor = (function() {
     }
     
     /**
-     * 선택 영역의 위치 계산
-     * @param {Element} element - 선택이 발생한 요소
-     * @returns {Object} 위치 정보 (top, left)
-     */
-    function getSelectionPosition(element) {
-        const selection = window.getSelection();
-        if (!selection || selection.rangeCount === 0) {
-            return { top: 0, left: 0 };
-        }
-        const range = selection.getRangeAt(0);
-        const rect = range.getBoundingClientRect();
-        
-        // 선택 영역 중앙에 툴바 배치
-        const lineHeight = parseInt(getComputedStyle(element).lineHeight) || parseInt(getComputedStyle(element).fontSize) || 20;
-        
-        return {
-            top: rect.top + window.scrollY - (lineHeight / 2),
-            left: rect.left + (rect.width / 2) + window.scrollX,
-            width: rect.width,
-            height: rect.height
-        };
-    }
-    
-    /**
-     * 텍스트의 너비 계산
-     * @param {string} text - 너비를 계산할 텍스트
-     * @param {Element} element - 스타일 참조용 요소
-     * @returns {number} 텍스트 너비
-     */
-    function getTextWidth(text, element) {
-        // 임시 캔버스를 사용하여 텍스트 너비 계산
-        const canvas = getTextWidth.canvas || (getTextWidth.canvas = document.createElement('canvas'));
-        const context = canvas.getContext('2d');
-        
-        // 요소의 폰트 스타일 적용
-        const fontStyle = getComputedStyle(element);
-        context.font = `${fontStyle.fontSize} ${fontStyle.fontFamily}`;
-        
-        // 텍스트 너비 계산 및 패딩 고려
-        const metrics = context.measureText(text);
-        const paddingLeft = parseInt(fontStyle.paddingLeft) || 0;
-        
-        return metrics.width + paddingLeft;
-    }
-    
-    /**
      * 툴바 생성 함수
      */
     function createToolbar() {
         // 툴바 컨테이너 생성
         toolbarElement = document.createElement('div');
-        toolbarElement.className = 'floating-editor';
-        toolbarElement.style.height = '36px'; // 툴바 높이를 36px로 고정
-        toolbarElement.style.margin = '0'; // 마진 제거
-        toolbarElement.style.padding = '0'; // 패딩 제거
-        toolbarElement.style.boxSizing = 'border-box'; // 박스 사이징 설정
-        toolbarElement.style.display = 'flex'; // 플렉스 레이아웃 사용
-        toolbarElement.style.alignItems = 'center'; // 세로 중앙 정렬
-        toolbarElement.style.justifyContent = 'center'; // 가로 중앙 정렬
-        toolbarElement.style.overflow = 'visible'; // 오버플로우 허용
+        toolbarElement.className = 'fixed-editor-toolbar';
+        
+        // 중요 속성은 !important로 설정하여 상속으로부터 보호
+        toolbarElement.style.setProperty('height', '36px', 'important');
+        toolbarElement.style.setProperty('margin', '0', 'important');
+        toolbarElement.style.setProperty('padding', '0', 'important');
+        toolbarElement.style.setProperty('box-sizing', 'border-box', 'important');
+        toolbarElement.style.setProperty('display', 'flex', 'important');
+        toolbarElement.style.setProperty('align-items', 'center', 'important');
+        toolbarElement.style.setProperty('justify-content', 'center', 'important');
+        toolbarElement.style.setProperty('overflow', 'visible', 'important');
+        toolbarElement.style.setProperty('position', 'fixed', 'important');
+        toolbarElement.style.setProperty('top', '0', 'important');
+        toolbarElement.style.setProperty('left', '0', 'important');
+        toolbarElement.style.setProperty('width', '100%', 'important');
+        toolbarElement.style.setProperty('background-color', '#f5f5f5', 'important');
+        toolbarElement.style.setProperty('border-bottom', '1px solid #ddd', 'important');
+        toolbarElement.style.setProperty('z-index', '9999', 'important');
+        toolbarElement.style.setProperty('opacity', '1', 'important');
+        toolbarElement.style.setProperty('visibility', 'visible', 'important');
         
         // 툴바 내부 요소 생성
         const toolbar = document.createElement('div');
-        toolbar.className = 'floating-editor-toolbar';
+        toolbar.className = 'fixed-editor-toolbar';
         toolbar.style.height = '36px'; // 툴바 내부 요소 높이도 36px로 고정
         toolbar.style.margin = '0'; // 마진 제거
         toolbar.style.padding = '0'; // 패딩 제거
@@ -285,6 +250,7 @@ const FloatingEditor = (function() {
         toolbar.style.justifyContent = 'center'; // 가로 중앙 정렬
         toolbar.style.boxSizing = 'border-box'; // 박스 사이징 설정
         toolbar.style.width = '100%'; // 너비 100%로 설정
+        toolbar.style.zIndex = '9999'; // 디플로이 순서 상위로 설정
         
         // createToolbar() insert icon button for tag editor 
         if (config.features.heading) {  // 필요에 따라  같은 플래그를 사용할 수 있음
@@ -348,7 +314,7 @@ const FloatingEditor = (function() {
      */
     function createToolbarButton(icon, title, action) {
         const button = document.createElement('button');
-        button.className = 'floating-editor-button';
+        button.className = 'fixed-editor-button';
         button.title = title;
         button.style.height = '36px'; // 버튼 높이를 36px로 고정
         button.style.width = '36px'; // 버튼 너비를 36px로 고정
@@ -372,7 +338,10 @@ const FloatingEditor = (function() {
         button.appendChild(iconElement);
         
         // 클릭 이벤트 리스너 추가
-        button.addEventListener('click', action);
+        button.addEventListener('click', (event) => {
+            event.stopPropagation(); // 이벤트 전파 중지
+            action(event);
+        });
         
         return button;
     }
@@ -383,7 +352,7 @@ const FloatingEditor = (function() {
      */
     function createToolbarSeparator() {
         const separator = document.createElement('div');
-        separator.className = 'floating-editor-separator';
+        separator.className = 'fixed-editor-separator';
         separator.style.height = '24px'; // 구분선 높이 설정
         separator.style.width = '1px'; // 구분선 너비 설정
         separator.style.margin = '0 4px'; // 좌우 마진만 설정
@@ -393,56 +362,36 @@ const FloatingEditor = (function() {
         return separator;
     }
     
+    
     /**
-     * 툴바 표시 함수
-     * @param {Object} position - 위치 정보 (top, left)
+     * 툴바 표시 함수 - 항상 툴바가 표시됨
      */
-    function showToolbar(position) {
+    function showToolbar() {
         if (!toolbarElement) return;
         
-        // 툴바 크기 정보
-        const toolbarRect = toolbarElement.getBoundingClientRect();
-        const tbWidth = toolbarRect.width;
-        const tbHeight = 36; // 툴바 높이를 36px로 고정
-        
-        // 선택 영역 정보 가져오기
-        const selection = window.getSelection();
-        const range = selection.getRangeAt(0);
-        const rect = range.getBoundingClientRect();
-        
-        // 툴바 위치 계산 (선택 영역 중앙)
-        let tbLeft = rect.left + (rect.width / 2) - (tbWidth / 2) + window.scrollX;
-        let tbTop = rect.top - tbHeight - 10 + window.scrollY; // 10px 위에 배치
-        
-        // 화면 경계 처리
-        if (tbLeft < window.scrollX + 10) {
-            tbLeft = window.scrollX + 10;
-        }
-        if (tbLeft + tbWidth > window.scrollX + window.innerWidth - 10) {
-            tbLeft = window.scrollX + window.innerWidth - tbWidth - 10;
-        }
-        if (tbTop < window.scrollY + 10) {
-            tbTop = rect.bottom + 10 + window.scrollY;
-        }
-        
-        toolbarElement.style.left = `${tbLeft}px`;
-        toolbarElement.style.top = `${tbTop}px`;
-        toolbarElement.style.position = 'absolute';
-        toolbarElement.style.zIndex = '9999';
-        
-        toolbarElement.classList.add('visible');
+        // 툴바가 항상 표시되도록 !important 속성을 사용하여 설정
+        toolbarElement.style.setProperty('display', 'flex', 'important');
+        toolbarElement.style.setProperty('z-index', '9999', 'important');
+        toolbarElement.style.setProperty('opacity', '1', 'important');
+        toolbarElement.style.setProperty('visibility', 'visible', 'important');
         isToolbarVisible = true;
     }
     
     /**
-     * 툴바 숨김 함수
+     * 툴바 숨김 함수 - 사용하지 않지만 API 호환성을 위해 유지
+     * 고정 툴바에서는 툴바가 숨겨지지 않음
      */
     function hideToolbar() {
-        if (!toolbarElement) return;
-        
-        toolbarElement.classList.remove('visible');
-        isToolbarVisible = false;
-        currentSelection = null;
+        // 고정 툴바에서는 툴바를 숨기지 않고 항상 표시도록 함
+        // 기존 showToolbar 호출 대신 직접 속성 설정
+        if (toolbarElement) {
+            toolbarElement.style.setProperty('display', 'flex', 'important');
+            toolbarElement.style.setProperty('z-index', '9999', 'important');
+            toolbarElement.style.setProperty('opacity', '1', 'important');
+            toolbarElement.style.setProperty('visibility', 'visible', 'important');
+            isToolbarVisible = true;
+        }
+        return;
     }
     
     /**
@@ -450,6 +399,7 @@ const FloatingEditor = (function() {
      * @param {Event} event - 이벤트 객체
      */
     function handleDocumentClick(event) {
+        // 툴바 내부 클릭은 이벤트 전파 중지
         if (toolbarElement && toolbarElement.contains(event.target)) {
             event.stopPropagation();
             return;
@@ -460,10 +410,12 @@ const FloatingEditor = (function() {
             headingLayer.style.display = 'none';
         }
         
-        if (editorElements.some(el => el.contains(event.target))) {
-            return;
-        }
-        hideToolbar();
+        // 항상 툴바가 표시되도록 설정 (CSS 속성에 !important 추가)
+        toolbarElement.style.setProperty('display', 'flex', 'important');
+        toolbarElement.style.setProperty('z-index', '9999', 'important');
+        toolbarElement.style.setProperty('opacity', '1', 'important');
+        toolbarElement.style.setProperty('visibility', 'visible', 'important');
+        isToolbarVisible = true;
     }
 
     /**
@@ -560,42 +512,29 @@ const FloatingEditor = (function() {
     // 서식 적용 함수 (execCommand 사용)
     // ---------------------------
     
-    function applyBold() {
-        const currentTop = parseInt(toolbarElement.style.top);
-        const currentLeft = parseInt(toolbarElement.style.left);
+    function applyBold(event) {
+        if (event) event.preventDefault();
         document.execCommand("bold", false, null);
-        toolbarElement.style.top = `${currentTop}px`;
-        toolbarElement.style.left = `${currentLeft}px`;
     }
     
-    function applyItalic() {
-        const currentTop = parseInt(toolbarElement.style.top);
-        const currentLeft = parseInt(toolbarElement.style.left);
+    function applyItalic(event) {
+        if (event) event.preventDefault();
         document.execCommand("italic", false, null);
-        toolbarElement.style.top = `${currentTop}px`;
-        toolbarElement.style.left = `${currentLeft}px`;
     }
     
-    function applyUnderline() {
-        const currentTop = parseInt(toolbarElement.style.top);
-        const currentLeft = parseInt(toolbarElement.style.left);
+    function applyUnderline(event) {
+        if (event) event.preventDefault();
         document.execCommand("underline", false, null);
-        toolbarElement.style.top = `${currentTop}px`;
-        toolbarElement.style.left = `${currentLeft}px`;
     }
     
-    function applyStrikethrough() {
-        const currentTop = parseInt(toolbarElement.style.top);
-        const currentLeft = parseInt(toolbarElement.style.left);
+    function applyStrikethrough(event) {
+        if (event) event.preventDefault();
         document.execCommand("strikeThrough", false, null);
-        toolbarElement.style.top = `${currentTop}px`;
-        toolbarElement.style.left = `${currentLeft}px`;
     }
     
     // code 태그는 execCommand 지원 없음 → 기존 custom 토글 사용
-    function applyCode() {
-        const currentTop = parseInt(toolbarElement.style.top);
-        const currentLeft = parseInt(toolbarElement.style.left);
+    function applyCode(event) {
+        if (event) event.preventDefault();
         const selection = window.getSelection();
         if (!selection.rangeCount) return;
         const range = selection.getRangeAt(0);
@@ -619,20 +558,15 @@ const FloatingEditor = (function() {
                 console.error("Code wrapping failed:", e);
             }
         }
-        toolbarElement.style.top = `${currentTop}px`;
-        toolbarElement.style.left = `${currentLeft}px`;
     }
     
-    function applyLink() {
-        const currentTop = parseInt(toolbarElement.style.top);
-        const currentLeft = parseInt(toolbarElement.style.left);
+    function applyLink(event) {
+        if (event) event.preventDefault();
         const selection = window.getSelection();
         if (selection.anchorNode) {
             let parent = selection.anchorNode.parentNode;
             if (parent && parent.tagName && parent.tagName.toLowerCase() === 'a') {
                 document.execCommand("unlink", false, null);
-                toolbarElement.style.top = `${currentTop}px`;
-                toolbarElement.style.left = `${currentLeft}px`;
                 return;
             }
         }
@@ -640,21 +574,16 @@ const FloatingEditor = (function() {
         if (url) {
             document.execCommand("createLink", false, url);
         }
-        toolbarElement.style.top = `${currentTop}px`;
-        toolbarElement.style.left = `${currentLeft}px`;
     }
     
-    function clearFormatting() {
-        const currentTop = parseInt(toolbarElement.style.top);
-        const currentLeft = parseInt(toolbarElement.style.left);
+    function clearFormatting(event) {
+        if (event) event.preventDefault();
         // inline 서식 및 링크 제거
         document.execCommand("removeFormat", false, null);
         document.execCommand("unlink", false, null);
         // 블록 레벨 서식을 paragraph로 변환 (heading 태그 제거)
         // 일부 브라우저에서는 "P" (대문자)를 전달해야 합니다.
         document.execCommand("formatBlock", false, "P");
-        toolbarElement.style.top = `${currentTop}px`;
-        toolbarElement.style.left = `${currentLeft}px`;
     }
     
     // 공개 API (외부에서 init, hide 함수만 사용)
